@@ -177,10 +177,13 @@ class Blackjack:
         # Initialize instance attributes
         # auto-increment as needed
         self.wallet = wallet
-        self.deck = Deck.deck()
-        self.game_number = 5
-        self.num_games = 1
+        self.deck = Deck()
         self.log = ""
+        self.game_number = 0
+        self.rounds = 1
+        self.min_bet = 5
+        self.player_hand = PlayerHand()
+        self.dealer_hand = DealerHand()
 
     def play_round(self, num_rounds, stand_threshold):
         """
@@ -193,7 +196,70 @@ class Blackjack:
             this threshold)
         """
         # This could get pretty long!
-        ...
+        assert isinstance(num_rounds, int)
+        assert isinstance(stand_threshold, int)
+
+        self.min_bet = 5
+        self.game_number = 2
+        self.num_rounds = num_rounds
+        self.stand_threshold = stand_threshold
+        min_cards = 4
+        results = 0
+        for i in range(1, self.num_rounds + 1):
+            if len(self.deck.get_cards()) < min_cards:
+                self.log += 'Not enough cards for a game.'
+                return None
+            else:
+                if self.wallet < self.min_bet:
+                    self.log += 'Wallet amount ${0} is less than bet amount ${1}.'\
+                    .format(self.wallet, self.min_bet)
+                    return None
+                else:
+                    self.log += 'Round {0} of Blackjack!\n'.format(self.rounds)
+                    self.log += 'wallet: {0}\n'.format(self.wallet)
+                    self.log += 'bet: {0}\n'.format(self.min_bet)
+                    self.deck.shuffle(mongean = randint(0, 6), \
+                    modified_overhand = randint(0, 6))
+
+                    self.deck.deal_hand(self.player_hand)
+                    self.deck.deal_hand(self.dealer_hand)
+                    self.deck.deal_hand(self.player_hand)
+                    self.deck.deal_hand(self.dealer_hand)
+
+                    self.log += 'Player Cards: {0}\n'\
+                    .format(repr(self.player_hand)) +\
+                    'Dealer Cards: {0}\n'.format(repr(self.dealer_hand))
+
+                    if len(self.deck.get_cards()) > 0:
+                        Blackjack.hit_or_stand(self, self.player_hand,\
+                        stand_threshold)
+
+                    self.dealer_hand.reveal_hand()
+                    self.log += \
+                    'Dealer Cards Revealed: {0}\n'.format(repr(self.dealer_hand))
+                    if len(self.deck.get_cards()) > 0:
+                        Blackjack.hit_or_stand(self,\
+                        self.dealer_hand, stand_threshold)
+
+                    results = Blackjack.determine_winner(self,\
+                    Blackjack.calculate_score(self.player_hand),\
+                    Blackjack.calculate_score(self.dealer_hand))
+                    if results == 1:
+                        Blackjack.add_to_file(self, self.player_hand,\
+                        self.dealer_hand, 'Player')
+                        self.rounds += 1
+                    elif results == -1:
+                        Blackjack.add_to_file(self, self.player_hand,\
+                        self.dealer_hand, 'Dealer')
+                        self.rounds += 1
+                    else:
+                        Blackjack.add_to_file(self, self.player_hand,\
+                        self.dealer_hand, 'Tied')
+                        self.rounds += 1
+                    self.player_hand = PlayerHand()
+                    self.dealer_hand = DealerHand()
+
+
 
     def calculate_score(hand):
         """
@@ -212,7 +278,45 @@ class Blackjack:
         Returns:
             The best score as an integer value.
         """
-        ...
+        assert isinstance(hand, (PlayerHand, DealerHand))
+        faces = 'KQJ'
+        face_value = 10
+        double_ace = 22
+        ace_value2 = 11
+        blackjack_value = 21
+        if repr(hand) == '':
+            return 0
+        lst = [face_value if str(x.rank) in faces else x.rank for x in \
+        hand.sort_hand()]
+
+        hands1 = [1 if x == 'A' else x for x in lst]
+        hands2 = [ace_value2 if x == 'A' else x for x in lst]
+
+        if (blackjack_value - sum(hands1) >= 0)\
+         & (blackjack_value - sum(hands2) >= 0):
+            if abs(sum(hands1) - blackjack_value) < \
+            abs(sum(hands2) - blackjack_value):
+                return sum(hands1)
+            elif sum(hands2) == double_ace:
+                return ace_value2 + 1
+            else:
+                return sum(hands2)
+        elif (blackjack_value - sum(hands1) < 0)\
+         & (blackjack_value - sum(hands2) < 0):
+            if abs(sum(hands1) - blackjack_value) < \
+            abs(sum(hands2) - blackjack_value):
+                return sum(hands1)
+            elif sum(hands2) == double_ace:
+                return ace_value2 + 1
+            else:
+                return sum(hands2)
+        elif (blackjack_value - sum(hands1) < 0)\
+         & (blackjack_value - sum(hands2) > 0):
+            return sum(hands2)
+        elif sum(hands2) == double_ace:
+            return ace_value2 + 1
+        else:
+            return sum(hands1)
 
     def determine_winner(self, player_score, dealer_score):
         """
@@ -223,7 +327,52 @@ class Blackjack:
         Returns:
             1 if the player won, 0 if it is a tie, and -1 if the dealer won
         """
-        ...
+        threshold = 21
+        if (player_score == threshold) & (dealer_score != threshold):
+            self.log += \
+            'Player won with a score of {0}. Dealer lost with a score of {1}.'\
+            .format(player_score, dealer_score) + '\n'
+            self.wallet += self.min_bet
+            self.min_bet += 5
+            return 1
+        if (player_score > threshold) & (dealer_score < threshold):
+            self.log += \
+            'Player lost with a score of {0}. Dealer won with a score of {1}.'\
+            .format(player_score, dealer_score) + '\n'
+            self.wallet -= self.min_bet
+            if self.min_bet > 5:
+                self.min_bet -= 5
+            return -1
+        elif (player_score < threshold) & (dealer_score > threshold):
+            self.log += \
+            'Player won with a score of {0}. Dealer lost with a score of {1}.'\
+            .format(player_score, dealer_score) + '\n'
+            self.wallet += self.min_bet
+            self.min_bet += 5
+            return 1
+        elif (player_score == dealer_score) | ((player_score > threshold) &\
+        (dealer_score > threshold)):
+            self.log += 'Player and Dealer tie.\n'
+            return 0
+        else:
+            if player_score - dealer_score < 0:
+                self.log += \
+                'Player lost with a score of {0}. Dealer won with a score of {1}.'\
+                .format(player_score, dealer_score) + '\n'
+                self.wallet -= self.min_bet
+                if self.min_bet > 5:
+                    self.min_bet -= 5
+                return -1
+            elif player_score - dealer_score > 0:
+                self.log +=\
+                'Player won with a score of {0}. Dealer lost with a score of {1}.'\
+                .format(player_score, dealer_score) + '\n'
+                self.wallet += self.min_bet
+                self.min_bet += 5
+                return 1
+            else:
+                self.log += 'Player and Dealer tie.\n'
+                return 0
 
     def hit_or_stand(self, hand, stand_threshold):
         """
@@ -236,14 +385,27 @@ class Blackjack:
             will stand (ie player stands if they have a score >=
             this threshold).
         """
-        ...
+        dealer_threshold = 17
+        if isinstance(hand, DealerHand):
+            while Blackjack.calculate_score(self.dealer_hand)\
+            < dealer_threshold:
+                self.log += 'Dealer pulled a ' \
+                + repr(self.deck.get_cards()[0]) + '\n'
+                self.deck.deal_hand(hand)
+
+        elif isinstance(hand, PlayerHand):
+            while Blackjack.calculate_score(self.player_hand)\
+             < stand_threshold:
+                self.log += 'Player pulled a '\
+                + repr(self.deck.get_cards()[0]) + '\n'
+                self.deck.deal_hand(hand)
+
 
     def get_log(self):
-        ...
+        return self.log
 
     def reset_log(self):
-        ...
-
+        self.log = ""
 
     def add_to_file(self, player_hand, dealer_hand, result):
         """
@@ -254,4 +416,17 @@ class Blackjack:
         """
 
         # Remember to use encoding = "utf-8"
-        ...
+#        if self.rounds == 0:
+#            with open("./game_summaries/game_summary"\
+#            + str(self.game_number)\
+#            + ".txt", 'a', encoding = 'utf-8') as f:
+#            f.write()
+
+        with open("./game_summaries/game_summary"\
+        + str(self.game_number)\
+        + ".txt", 'a', encoding = 'utf-8') as f:
+            f.write('ROUND {0}:\nPlayer Hand:\n{1}\n'\
+            .format(self.rounds, player_hand))
+            f.write('Dealer Hand:\n{0}\n'.format(dealer_hand))
+            f.write('Winner of ROUND {0}: {1}\n\n'\
+            .format(self.rounds, result))
